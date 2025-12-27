@@ -1,7 +1,12 @@
 import { useState, useEffect } from "react";
 import { Contract, formatUnits } from "ethers";
 import { useEthersSigner } from "../utils/ethersAdapter";
-import { CONTRACT_ADDRESS, CONTRACT_ABI } from "../data/contractConfig";
+import {
+  CONTRACT_ADDRESS,
+  CONTRACT_ABI,
+  VIEWS_CONTRACT_ADDRESS,
+  VIEWS_CONTRACT_ABI,
+} from "../data/contractConfig";
 import Card from "../components/ui/Card";
 import StatusBadge from "../components/ui/StatusBadge";
 import {
@@ -32,9 +37,13 @@ export default function FundRecovery() {
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-
-      // Get all recovery status
-      const status = await contract.getAllRecoveryStatus(0, 100);
+      // Use Views contract for getAllRecoveryStatus
+      const viewsContract = new Contract(
+        VIEWS_CONTRACT_ADDRESS,
+        VIEWS_CONTRACT_ABI,
+        signer
+      );
+      const status = await viewsContract.getAllRecoveryStatus(0, 100);
 
       // Known token decimals fallback
       const knownDecimals = {
@@ -69,7 +78,7 @@ export default function FundRecovery() {
       // Check if any recoverable
       let hasRecoverable = false;
       try {
-        const result = await contract.hasRecoverableFunds(0, 100);
+        const result = await viewsContract.hasRecoverableFunds();
         hasRecoverable = result.canRecover;
       } catch {
         hasRecoverable = tokens.some((t) => parseFloat(t.recoverable) > 0);
@@ -78,7 +87,7 @@ export default function FundRecovery() {
       // Get total recoverable USD
       let totalRecoverableUSD = "0";
       try {
-        const summary = await contract.getGlobalProtectionSummary();
+        const summary = await viewsContract.getGlobalProtectionSummary();
         totalRecoverableUSD = formatUnits(summary.totalRecoverableUSD, 18);
       } catch {
         // Function might not exist

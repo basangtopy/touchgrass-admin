@@ -1,7 +1,12 @@
 import { useState, useEffect } from "react";
 import { Contract, formatUnits } from "ethers";
 import { useEthersSigner } from "../utils/ethersAdapter";
-import { CONTRACT_ADDRESS, CONTRACT_ABI } from "../data/contractConfig";
+import {
+  CONTRACT_ADDRESS,
+  CONTRACT_ABI,
+  VIEWS_CONTRACT_ADDRESS,
+  VIEWS_CONTRACT_ABI,
+} from "../data/contractConfig";
 import StatCard from "../components/ui/StatCard";
 import Card from "../components/ui/Card";
 import StatusBadge from "../components/ui/StatusBadge";
@@ -139,7 +144,13 @@ export default function Overview() {
         let totalProtectedUSD = "0";
         let totalRecoverableUSD = "0";
         try {
-          const summary = await contract.getGlobalProtectionSummary();
+          // Use Views contract for getGlobalProtectionSummary
+          const viewsContract = new Contract(
+            VIEWS_CONTRACT_ADDRESS,
+            VIEWS_CONTRACT_ABI,
+            signer
+          );
+          const summary = await viewsContract.getGlobalProtectionSummary();
           totalProtectedUSD = formatUnits(summary.totalProtectedUSD, 18);
           totalRecoverableUSD = formatUnits(summary.totalRecoverableUSD, 18);
         } catch {
