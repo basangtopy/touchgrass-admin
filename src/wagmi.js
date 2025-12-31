@@ -1,6 +1,5 @@
-import { http } from "wagmi";
-import { base, baseSepolia, hardhat } from "wagmi/chains";
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { base, baseSepolia, hardhat } from "wagmi/chains";
 
 // WalletConnect project ID from environment variable
 const projectId =
@@ -13,13 +12,13 @@ if (import.meta.env.PROD && projectId === "touchgrass-admin-dev") {
   );
 }
 
+// Get chains based on environment
+const isDev = import.meta.env.DEV;
+const chains = isDev ? [base, baseSepolia, hardhat] : [baseSepolia, base];
+
 export const config = getDefaultConfig({
   appName: "TouchGrass Admin",
   projectId,
-  chains: [base, baseSepolia, hardhat],
-  transports: {
-    [base.id]: http(),
-    [baseSepolia.id]: http(),
-    [hardhat.id]: http("http://127.0.0.1:8545"),
-  },
+  chains,
+  ssr: false,
 });

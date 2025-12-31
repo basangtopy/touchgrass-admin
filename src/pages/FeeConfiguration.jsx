@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Contract, formatUnits } from "ethers";
+import { Contract, formatUnits, parseUnits } from "ethers";
 import { useEthersSigner } from "../utils/ethersAdapter";
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from "../data/contractConfig";
 import Card from "../components/ui/Card";
@@ -108,7 +108,9 @@ export default function FeeConfiguration() {
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-      const tx = await contract.scheduleUSDCFeeUpdate(parseFloat(forms.newFee));
+      const tx = await contract.scheduleUSDCFeeUpdate(
+        parseUnits(forms.newFee, 6)
+      );
       await tx.wait();
       setSuccess(`Fee update scheduled to $${forms.newFee}`);
       setForms({ ...forms, newFee: "" });
@@ -162,7 +164,9 @@ export default function FeeConfiguration() {
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-      const tx = await contract.setUSDCMinStake(parseFloat(forms.newMinStake));
+      const tx = await contract.setUSDCMinStake(
+        parseUnits(forms.newMinStake, 6)
+      );
       await tx.wait();
       setSuccess(`Minimum stake updated to $${forms.newMinStake}`);
       window.location.reload();
