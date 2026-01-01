@@ -4,6 +4,8 @@ import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { isAdmin } from "./data/adminWallets";
 import Layout from "./components/layout/Layout";
+import { ToastProvider } from "./contexts/ToastContext";
+import ToastContainer from "./components/ui/ToastContainer";
 import { Leaf, ShieldX } from "lucide-react";
 
 // Lazy load page components for better initial bundle size
@@ -85,20 +87,23 @@ function App() {
 
   // Authorized - show dashboard with lazy loaded routes
   return (
-    <Suspense fallback={<PageLoader />}>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Overview />} />
-          <Route path="tokens" element={<TokenManagement />} />
-          <Route path="fees" element={<FeeConfiguration />} />
-          <Route path="recovery" element={<FundRecovery />} />
-          <Route path="challenges" element={<Challenges />} />
-          <Route path="wallets" element={<WalletSettings />} />
-          <Route path="ownership" element={<Ownership />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </Suspense>
+    <ToastProvider>
+      <ToastContainer />
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Overview />} />
+            <Route path="tokens" element={<TokenManagement />} />
+            <Route path="fees" element={<FeeConfiguration />} />
+            <Route path="recovery" element={<FundRecovery />} />
+            <Route path="challenges" element={<Challenges />} />
+            <Route path="wallets" element={<WalletSettings />} />
+            <Route path="ownership" element={<Ownership />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </Suspense>
+    </ToastProvider>
   );
 }
 

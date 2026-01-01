@@ -8,10 +8,11 @@ import Button from "../components/ui/Button";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import StatusBadge from "../components/ui/StatusBadge";
 import { formatAddress, formatDuration } from "../utils/helpers";
+import { useToast } from "../contexts/ToastContext";
+import { parseContractError } from "../utils/errorParser";
 import {
   ListChecks,
   AlertCircle,
-  CheckCircle,
   Trash2,
   Search,
   Info,
@@ -21,10 +22,9 @@ import {
 
 export default function Challenges() {
   const signer = useEthersSigner();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   const [challengeCount, setChallengeCount] = useState(0);
   const [searchId, setSearchId] = useState("");
@@ -113,7 +113,6 @@ export default function Challenges() {
     if (!searchId) return;
 
     setLoading(true);
-    setError("");
     setChallenge(null);
 
     try {
@@ -150,7 +149,11 @@ export default function Challenges() {
       });
     } catch (error) {
       console.error("Search error:", error);
-      setError("Challenge not found");
+      showToast({
+        type: "error",
+        title: "Not Found",
+        message: "Challenge not found",
+      });
     } finally {
       setLoading(false);
     }
@@ -165,17 +168,20 @@ export default function Challenges() {
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, isOpen: false });
         setProcessing(true);
-        setError("");
 
         try {
           const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
           const tx = await contract.sweepPenalty(challengeId);
           await tx.wait();
-          setSuccess("Penalty swept successfully");
+          showToast({
+            type: "success",
+            title: "Success",
+            message: "Penalty swept successfully",
+          });
           searchChallenge();
         } catch (error) {
           console.error("Sweep error:", error);
-          setError(error.reason || "Failed to sweep penalty");
+          showToast({ type: "error", ...parseContractError(error) });
         } finally {
           setProcessing(false);
         }
@@ -200,7 +206,11 @@ export default function Challenges() {
       setShowRecoveryModal(true);
     } catch (error) {
       console.error("Recovery info error:", error);
-      setError("Failed to fetch recovery info");
+      showToast({
+        type: "error",
+        title: "Error",
+        message: "Failed to fetch recovery info",
+      });
     }
   };
 
@@ -237,26 +247,6 @@ export default function Challenges() {
 
   return (
     <div>
-      {error && (
-        <div className="alert danger mb-4">
-          <AlertCircle size={20} />
-          <div>
-            <div className="alert-title">Error</div>
-            <div className="alert-message">{error}</div>
-          </div>
-        </div>
-      )}
-
-      {success && (
-        <div className="alert success mb-4">
-          <CheckCircle size={20} />
-          <div>
-            <div className="alert-title">Success</div>
-            <div className="alert-message">{success}</div>
-          </div>
-        </div>
-      )}
-
       <div
         style={{
           display: "grid",

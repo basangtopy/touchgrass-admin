@@ -6,21 +6,15 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import StatusBadge from "../components/ui/StatusBadge";
 import ConfirmModal from "../components/ui/ConfirmModal";
-import {
-  AlertCircle,
-  CheckCircle,
-  AlertTriangle,
-  Power,
-  UserX,
-  UserCheck,
-} from "lucide-react";
+import { useToast } from "../contexts/ToastContext";
+import { parseContractError } from "../utils/errorParser";
+import { AlertTriangle, Power, UserX, UserCheck } from "lucide-react";
 
 export default function Ownership() {
   const signer = useEthersSigner();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   const [status, setStatus] = useState({
     owner: "",
@@ -43,64 +37,63 @@ export default function Ownership() {
     onConfirm: () => {},
   });
 
-  useEffect(() => {
-    const fetchStatus = async () => {
-      if (!signer) return;
+  const fetchStatus = async () => {
+    if (!signer) return;
 
+    try {
+      const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+      const [owner, isPaused] = await Promise.all([
+        contract.owner(),
+        contract.paused(),
+      ]);
+
+      // Get pending ownership info
+      let pendingOwner = "";
+      let canAcceptOwnership = false;
       try {
-        const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-
-        const [owner, isPaused] = await Promise.all([
-          contract.owner(),
-          contract.paused(),
-        ]);
-
-        // Get pending ownership info
-        let pendingOwner = "";
-        let canAcceptOwnership = false;
-        try {
-          pendingOwner = await contract.pendingOwner();
-          if (pendingOwner !== "0x0000000000000000000000000000000000000000") {
-            canAcceptOwnership = await contract.canAcceptOwnership();
-          }
-        } catch {
-          // Function might not exist
+        pendingOwner = await contract.pendingOwner();
+        if (pendingOwner !== "0x0000000000000000000000000000000000000000") {
+          canAcceptOwnership = await contract.canAcceptOwnership();
         }
-
-        // Get renunciation status
-        let renunciationInitiated = false;
-        let canExecuteRenunciation = false;
-        let renunciationTimeRemaining = 0;
-        try {
-          renunciationInitiated =
-            await contract.ownershipRenunciationInitiated();
-          if (renunciationInitiated) {
-            canExecuteRenunciation = await contract.canExecuteRenunciation();
-            renunciationTimeRemaining = Number(
-              await contract.renunciationTimeRemaining()
-            );
-          }
-        } catch {
-          // Functions might not exist
-        }
-
-        setStatus({
-          owner,
-          isPaused,
-          pendingOwner,
-          canAcceptOwnership,
-          renunciationInitiated,
-          canExecuteRenunciation,
-          renunciationTimeRemaining,
-        });
-      } catch (error) {
-        console.error("Error fetching status:", error);
-        setError("Failed to fetch ownership status");
-      } finally {
-        setLoading(false);
+      } catch {
+        // Function might not exist
       }
-    };
 
+      // Get renunciation status
+      let renunciationInitiated = false;
+      let canExecuteRenunciation = false;
+      let renunciationTimeRemaining = 0;
+      try {
+        renunciationInitiated = await contract.ownershipRenunciationInitiated();
+        if (renunciationInitiated) {
+          canExecuteRenunciation = await contract.canExecuteRenunciation();
+          renunciationTimeRemaining = Number(
+            await contract.renunciationTimeRemaining()
+          );
+        }
+      } catch {
+        // Functions might not exist
+      }
+
+      setStatus({
+        owner,
+        isPaused,
+        pendingOwner,
+        canAcceptOwnership,
+        renunciationInitiated,
+        canExecuteRenunciation,
+        renunciationTimeRemaining,
+      });
+    } catch (error) {
+      console.error("Error fetching status:", error);
+      showToast({ type: "error", ...parseContractError(error) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchStatus();
   }, [signer]);
 
@@ -118,16 +111,19 @@ export default function Ownership() {
       onConfirm: async () => {
         closeConfirmModal();
         setProcessing(true);
-        setError("");
 
         try {
           const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
           const tx = await contract.pause();
           await tx.wait();
-          setSuccess("Contract paused");
-          window.location.reload();
+          showToast({
+            type: "success",
+            title: "Success",
+            message: "Contract paused",
+          });
+          fetchStatus();
         } catch (error) {
-          setError(error.reason || "Failed to pause contract");
+          showToast({ type: "error", ...parseContractError(error) });
         } finally {
           setProcessing(false);
         }
@@ -137,16 +133,19 @@ export default function Ownership() {
 
   const handleUnpause = async () => {
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.unpause();
       await tx.wait();
-      setSuccess("Contract unpaused");
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Contract unpaused",
+      });
+      fetchStatus();
     } catch (error) {
-      setError(error.reason || "Failed to unpause contract");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -168,17 +167,20 @@ export default function Ownership() {
       onConfirm: async () => {
         closeConfirmModal();
         setProcessing(true);
-        setError("");
 
         try {
           const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
           const tx = await contract.transferOwnership(newOwner);
           await tx.wait();
-          setSuccess("Ownership transfer initiated. 48-hour delay started.");
+          showToast({
+            type: "success",
+            title: "Success",
+            message: "Ownership transfer initiated. 48-hour delay started.",
+          });
           setNewOwner("");
-          window.location.reload();
+          fetchStatus();
         } catch (error) {
-          setError(error.reason || "Failed to initiate transfer");
+          showToast({ type: "error", ...parseContractError(error) });
         } finally {
           setProcessing(false);
         }
@@ -188,16 +190,19 @@ export default function Ownership() {
 
   const handleCancelTransfer = async () => {
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.cancelOwnershipTransfer();
       await tx.wait();
-      setSuccess("Ownership transfer cancelled");
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Ownership transfer cancelled",
+      });
+      fetchStatus();
     } catch (error) {
-      setError(error.reason || "Failed to cancel transfer");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -205,16 +210,19 @@ export default function Ownership() {
 
   const handleAcceptOwnership = async () => {
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.acceptOwnership();
       await tx.wait();
-      setSuccess("Ownership accepted! You are now the owner.");
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Ownership accepted! You are now the owner.",
+      });
+      fetchStatus();
     } catch (error) {
-      setError(error.reason || "Failed to accept ownership");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -230,16 +238,19 @@ export default function Ownership() {
       onConfirm: async () => {
         closeConfirmModal();
         setProcessing(true);
-        setError("");
 
         try {
           const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
           const tx = await contract.renounceOwnership();
           await tx.wait();
-          setSuccess("Renunciation scheduled. 7-day delay started.");
-          window.location.reload();
+          showToast({
+            type: "success",
+            title: "Success",
+            message: "Renunciation scheduled. 7-day delay started.",
+          });
+          fetchStatus();
         } catch (error) {
-          setError(error.reason || "Failed to schedule renunciation");
+          showToast({ type: "error", ...parseContractError(error) });
         } finally {
           setProcessing(false);
         }
@@ -257,16 +268,19 @@ export default function Ownership() {
       onConfirm: async () => {
         closeConfirmModal();
         setProcessing(true);
-        setError("");
 
         try {
           const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
           const tx = await contract.executeOwnershipRenunciation();
           await tx.wait();
-          setSuccess("Ownership renounced. The contract is now ownerless.");
-          window.location.reload();
+          showToast({
+            type: "success",
+            title: "Success",
+            message: "Ownership renounced. The contract is now ownerless.",
+          });
+          fetchStatus();
         } catch (error) {
-          setError(error.reason || "Failed to execute renunciation");
+          showToast({ type: "error", ...parseContractError(error) });
         } finally {
           setProcessing(false);
         }
@@ -276,16 +290,19 @@ export default function Ownership() {
 
   const handleCancelRenunciation = async () => {
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.cancelOwnershipRenunciation();
       await tx.wait();
-      setSuccess("Renunciation cancelled");
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Renunciation cancelled",
+      });
+      fetchStatus();
     } catch (error) {
-      setError(error.reason || "Failed to cancel renunciation");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -310,26 +327,6 @@ export default function Ownership() {
 
   return (
     <div>
-      {error && (
-        <div className="alert danger mb-4">
-          <AlertCircle size={20} />
-          <div>
-            <div className="alert-title">Error</div>
-            <div className="alert-message">{error}</div>
-          </div>
-        </div>
-      )}
-
-      {success && (
-        <div className="alert success mb-4">
-          <CheckCircle size={20} />
-          <div>
-            <div className="alert-title">Success</div>
-            <div className="alert-message">{success}</div>
-          </div>
-        </div>
-      )}
-
       <div
         style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}
       >

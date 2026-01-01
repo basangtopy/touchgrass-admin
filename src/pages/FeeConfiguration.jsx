@@ -3,20 +3,15 @@ import { Contract, formatUnits, parseUnits } from "ethers";
 import { useEthersSigner } from "../utils/ethersAdapter";
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from "../data/contractConfig";
 import Card from "../components/ui/Card";
-import {
-  DollarSign,
-  Clock,
-  AlertCircle,
-  CheckCircle,
-  Settings,
-} from "lucide-react";
+import { useToast } from "../contexts/ToastContext";
+import { parseContractError } from "../utils/errorParser";
+import { DollarSign, Clock, Settings } from "lucide-react";
 
 export default function FeeConfiguration() {
   const signer = useEthersSigner();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   const [config, setConfig] = useState({
     usdcFee: "0",
@@ -39,72 +34,70 @@ export default function FeeConfiguration() {
     minPenaltyPercentage: "",
   });
 
-  useEffect(() => {
-    const fetchConfig = async () => {
-      if (!signer) return;
+  const fetchConfig = async () => {
+    if (!signer) return;
 
+    try {
+      const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+      const [
+        usdcFee,
+        usdcMinStake,
+        minDuration,
+        maxDuration,
+        gracePeriod,
+        lockMultiplier,
+        minPenaltyPercentage,
+      ] = await Promise.all([
+        contract.usdcFee(),
+        contract.usdcMinStake(),
+        contract.MIN_DURATION(),
+        contract.MAX_DURATION(),
+        contract.GRACE_PERIOD(),
+        contract.LOCK_MULTIPLIER(),
+        contract.MIN_PENALTY_PERCENTAGE(),
+      ]);
+
+      // Check pending fee update
+      let pendingFeeUpdate = null;
       try {
-        const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-
-        const [
-          usdcFee,
-          usdcMinStake,
-          minDuration,
-          maxDuration,
-          gracePeriod,
-          lockMultiplier,
-          minPenaltyPercentage,
-        ] = await Promise.all([
-          contract.usdcFee(),
-          contract.usdcMinStake(),
-          contract.MIN_DURATION(),
-          contract.MAX_DURATION(),
-          contract.GRACE_PERIOD(),
-          contract.LOCK_MULTIPLIER(),
-          contract.MIN_PENALTY_PERCENTAGE(),
-        ]);
-
-        // Check pending fee update
-        let pendingFeeUpdate = null;
-        try {
-          const pending = await contract.pendingUSDCFeeUpdate();
-          if (pending.isPending) {
-            pendingFeeUpdate = {
-              newFee: formatUnits(pending.newFee, 6),
-              effectiveTime: Number(pending.effectiveTime) * 1000,
-              canExecute: Date.now() >= Number(pending.effectiveTime) * 1000,
-            };
-          }
-        } catch {
-          // No pending update
+        const pending = await contract.pendingUSDCFeeUpdate();
+        if (pending.isPending) {
+          pendingFeeUpdate = {
+            newFee: formatUnits(pending.newFee, 6),
+            effectiveTime: Number(pending.effectiveTime) * 1000,
+            canExecute: Date.now() >= Number(pending.effectiveTime) * 1000,
+          };
         }
-
-        setConfig({
-          usdcFee: formatUnits(usdcFee, 6),
-          usdcMinStake: formatUnits(usdcMinStake, 6),
-          minDuration: (Number(minDuration) / 60).toString(), // To minutes
-          maxDuration: (Number(maxDuration) / 86400).toString(), // To days
-          gracePeriod: (Number(gracePeriod) / 86400).toString(), // To days
-          lockMultiplier: lockMultiplier.toString(),
-          minPenaltyPercentage: minPenaltyPercentage.toString(),
-          pendingFeeUpdate,
-        });
-      } catch (error) {
-        console.error("Error fetching config:", error);
-        setError("Failed to fetch configuration");
-      } finally {
-        setLoading(false);
+      } catch {
+        // No pending update
       }
-    };
 
+      setConfig({
+        usdcFee: formatUnits(usdcFee, 6),
+        usdcMinStake: formatUnits(usdcMinStake, 6),
+        minDuration: (Number(minDuration) / 60).toString(), // To minutes
+        maxDuration: (Number(maxDuration) / 86400).toString(), // To days
+        gracePeriod: (Number(gracePeriod) / 86400).toString(), // To days
+        lockMultiplier: lockMultiplier.toString(),
+        minPenaltyPercentage: minPenaltyPercentage.toString(),
+        pendingFeeUpdate,
+      });
+    } catch (error) {
+      console.error("Error fetching config:", error);
+      showToast({ type: "error", ...parseContractError(error) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchConfig();
   }, [signer]);
 
   const handleScheduleFee = async () => {
     if (!forms.newFee) return;
     setProcessing(true);
-    setError("");
-    setSuccess("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -112,12 +105,15 @@ export default function FeeConfiguration() {
         parseUnits(forms.newFee, 6)
       );
       await tx.wait();
-      setSuccess(`Fee update scheduled to $${forms.newFee}`);
+      showToast({
+        type: "success",
+        title: "Success",
+        message: `Fee update scheduled to $${forms.newFee}`,
+      });
       setForms({ ...forms, newFee: "" });
-      // Refresh
-      window.location.reload();
+      fetchConfig();
     } catch (error) {
-      setError(error.reason || "Failed to schedule fee update");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -125,16 +121,19 @@ export default function FeeConfiguration() {
 
   const handleExecuteFee = async () => {
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.executeUSDCFeeUpdate();
       await tx.wait();
-      setSuccess("Fee update executed successfully!");
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Fee update executed successfully!",
+      });
+      fetchConfig();
     } catch (error) {
-      setError(error.reason || "Failed to execute fee update");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -142,16 +141,19 @@ export default function FeeConfiguration() {
 
   const handleCancelFee = async () => {
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.cancelUSDCFeeUpdate();
       await tx.wait();
-      setSuccess("Fee update cancelled");
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Fee update cancelled",
+      });
+      fetchConfig();
     } catch (error) {
-      setError(error.reason || "Failed to cancel fee update");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -160,7 +162,6 @@ export default function FeeConfiguration() {
   const handleUpdateMinStake = async () => {
     if (!forms.newMinStake) return;
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -168,10 +169,14 @@ export default function FeeConfiguration() {
         parseUnits(forms.newMinStake, 6)
       );
       await tx.wait();
-      setSuccess(`Minimum stake updated to $${forms.newMinStake}`);
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: `Minimum stake updated to $${forms.newMinStake}`,
+      });
+      fetchConfig();
     } catch (error) {
-      setError(error.reason || "Failed to update minimum stake");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -180,7 +185,6 @@ export default function FeeConfiguration() {
   const handleUpdateDurations = async () => {
     if (!forms.minDuration || !forms.maxDuration) return;
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -189,10 +193,14 @@ export default function FeeConfiguration() {
         parseInt(forms.maxDuration)
       );
       await tx.wait();
-      setSuccess("Duration bounds updated");
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Duration bounds updated",
+      });
+      fetchConfig();
     } catch (error) {
-      setError(error.reason || "Failed to update duration bounds");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -201,16 +209,19 @@ export default function FeeConfiguration() {
   const handleUpdateGracePeriod = async () => {
     if (!forms.gracePeriod) return;
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.setGracePeriod(parseInt(forms.gracePeriod));
       await tx.wait();
-      setSuccess("Grace period updated");
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Grace period updated",
+      });
+      fetchConfig();
     } catch (error) {
-      setError(error.reason || "Failed to update grace period");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -219,7 +230,6 @@ export default function FeeConfiguration() {
   const handleUpdateLockMultiplier = async () => {
     if (!forms.lockMultiplier) return;
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -227,10 +237,14 @@ export default function FeeConfiguration() {
         parseInt(forms.lockMultiplier)
       );
       await tx.wait();
-      setSuccess("Lock multiplier updated");
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Lock multiplier updated",
+      });
+      fetchConfig();
     } catch (error) {
-      setError(error.reason || "Failed to update lock multiplier");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -239,7 +253,6 @@ export default function FeeConfiguration() {
   const handleUpdateMinPenalty = async () => {
     if (!forms.minPenaltyPercentage) return;
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -247,10 +260,14 @@ export default function FeeConfiguration() {
         parseInt(forms.minPenaltyPercentage)
       );
       await tx.wait();
-      setSuccess("Minimum penalty percentage updated");
-      window.location.reload();
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Minimum penalty percentage updated",
+      });
+      fetchConfig();
     } catch (error) {
-      setError(error.reason || "Failed to update minimum penalty");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -269,26 +286,6 @@ export default function FeeConfiguration() {
 
   return (
     <div>
-      {error && (
-        <div className="alert danger mb-4">
-          <AlertCircle size={20} />
-          <div>
-            <div className="alert-title">Error</div>
-            <div className="alert-message">{error}</div>
-          </div>
-        </div>
-      )}
-
-      {success && (
-        <div className="alert success mb-4">
-          <CheckCircle size={20} />
-          <div>
-            <div className="alert-title">Success</div>
-            <div className="alert-message">{success}</div>
-          </div>
-        </div>
-      )}
-
       <div
         style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}
       >

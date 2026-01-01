@@ -8,10 +8,10 @@ import Button from "../components/ui/Button";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import { formatAddress } from "../utils/helpers";
 import { useMultiWalletBalances } from "../hooks/useWalletBalances";
+import { useToast } from "../contexts/ToastContext";
+import { parseContractError } from "../utils/errorParser";
 import {
   Wallet,
-  AlertCircle,
-  CheckCircle,
   Shield,
   Building,
   Heart,
@@ -23,10 +23,9 @@ import {
 
 export default function WalletSettings() {
   const signer = useEthersSigner();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   const [wallets, setWallets] = useState({
     verifier: "",
@@ -88,12 +87,33 @@ export default function WalletSettings() {
             contract.queryFilter(removedFilter),
           ]);
 
-          // Build current list: added - removed
-          const addedSet = new Set(addedEvents.map((e) => e.args.multiSig));
-          const removedSet = new Set(removedEvents.map((e) => e.args.multiSig));
-          const currentMultiSigs = [...addedSet].filter(
-            (addr) => !removedSet.has(addr)
+          // Merge and sort events chronologically to handle re-additions correctly
+          const allEvents = [
+            ...addedEvents.map((e) => ({
+              address: e.args.multiSig,
+              type: "add",
+              blockNumber: e.blockNumber,
+              logIndex: e.logIndex,
+            })),
+            ...removedEvents.map((e) => ({
+              address: e.args.multiSig,
+              type: "remove",
+              blockNumber: e.blockNumber,
+              logIndex: e.logIndex,
+            })),
+          ].sort(
+            (a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex
           );
+
+          // Process in order - final state is determined by the last action for each address
+          const addressState = new Map();
+          allEvents.forEach((event) => {
+            addressState.set(event.address, event.type === "add");
+          });
+
+          const currentMultiSigs = [...addressState.entries()]
+            .filter(([, isActive]) => isActive)
+            .map(([address]) => address);
           setMultiSigs(currentMultiSigs);
         } catch (e) {
           console.warn("Could not fetch multi-sig events:", e.message);
@@ -109,19 +129,36 @@ export default function WalletSettings() {
             contract.queryFilter(removedFilter),
           ]);
 
-          // Build current list: added - removed
-          const addedSet = new Set(addedEvents.map((e) => e.args.recipient));
-          const removedSet = new Set(
-            removedEvents.map((e) => e.args.recipient)
+          // Merge and sort events chronologically to handle re-additions correctly
+          const allEvents = [
+            ...addedEvents.map((e) => ({
+              address: e.args.recipient,
+              type: "add",
+              blockNumber: e.blockNumber,
+              logIndex: e.logIndex,
+            })),
+            ...removedEvents.map((e) => ({
+              address: e.args.recipient,
+              type: "remove",
+              blockNumber: e.blockNumber,
+              logIndex: e.logIndex,
+            })),
+          ].sort(
+            (a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex
           );
 
+          // Process in order - final state is determined by the last action for each address
+          const addressState = new Map();
           // Include charity and treasury - they're added in constructor without events
-          addedSet.add(charity);
-          addedSet.add(treasury);
+          addressState.set(charity, true);
+          addressState.set(treasury, true);
+          allEvents.forEach((event) => {
+            addressState.set(event.address, event.type === "add");
+          });
 
-          const currentRecipients = [...addedSet].filter(
-            (addr) => !removedSet.has(addr)
-          );
+          const currentRecipients = [...addressState.entries()]
+            .filter(([, isActive]) => isActive)
+            .map(([address]) => address);
           setTrustedRecipients(currentRecipients);
         } catch (e) {
           console.warn("Could not fetch trusted recipient events:", e.message);
@@ -130,7 +167,7 @@ export default function WalletSettings() {
         }
       } catch (error) {
         console.error("Error fetching wallets:", error);
-        setError("Failed to fetch wallet addresses");
+        showToast({ type: "error", ...parseContractError(error) });
       } finally {
         setLoading(false);
       }
@@ -142,17 +179,20 @@ export default function WalletSettings() {
   const handleUpdateVerifier = async () => {
     if (!forms.newVerifier) return;
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.setVerifier(forms.newVerifier);
       await tx.wait();
-      setSuccess("Verifier updated successfully");
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Verifier updated successfully",
+      });
       setForms({ ...forms, newVerifier: "" });
       setWallets({ ...wallets, verifier: forms.newVerifier });
     } catch (error) {
-      setError(error.reason || "Failed to update verifier");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -161,17 +201,20 @@ export default function WalletSettings() {
   const handleUpdateCharity = async () => {
     if (!forms.newCharity) return;
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.setCharityWallet(forms.newCharity);
       await tx.wait();
-      setSuccess("Charity wallet updated successfully");
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Charity wallet updated successfully",
+      });
       setForms({ ...forms, newCharity: "" });
       setWallets({ ...wallets, charity: forms.newCharity });
     } catch (error) {
-      setError(error.reason || "Failed to update charity wallet");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -180,17 +223,20 @@ export default function WalletSettings() {
   const handleUpdateTreasury = async () => {
     if (!forms.newTreasury) return;
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.setTreasuryWallet(forms.newTreasury);
       await tx.wait();
-      setSuccess("Treasury wallet updated successfully");
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Treasury wallet updated successfully",
+      });
       setForms({ ...forms, newTreasury: "" });
       setWallets({ ...wallets, treasury: forms.newTreasury });
     } catch (error) {
-      setError(error.reason || "Failed to update treasury wallet");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -199,18 +245,21 @@ export default function WalletSettings() {
   const handleWhitelistMultiSig = async () => {
     if (!forms.newMultiSig) return;
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
       const tx = await contract.whitelistMultiSig(forms.newMultiSig);
       await tx.wait();
-      setSuccess("Multi-sig whitelisted");
+      showToast({
+        type: "success",
+        title: "Success",
+        message: "Multi-sig whitelisted",
+      });
       setMultiSigs([...multiSigs, forms.newMultiSig]);
       setForms({ ...forms, newMultiSig: "" });
       setShowMultiSigModal(false);
     } catch (error) {
-      setError(error.reason || "Failed to whitelist multi-sig");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -225,16 +274,19 @@ export default function WalletSettings() {
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, isOpen: false });
         setProcessing(true);
-        setError("");
 
         try {
           const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
           const tx = await contract.removeMultiSigWhitelist(address);
           await tx.wait();
-          setSuccess("Multi-sig removed from whitelist");
+          showToast({
+            type: "success",
+            title: "Success",
+            message: "Multi-sig removed from whitelist",
+          });
           setMultiSigs(multiSigs.filter((a) => a !== address));
         } catch (error) {
-          setError(error.reason || "Failed to remove multi-sig");
+          showToast({ type: "error", ...parseContractError(error) });
         } finally {
           setProcessing(false);
         }
@@ -255,26 +307,6 @@ export default function WalletSettings() {
 
   return (
     <div>
-      {error && (
-        <div className="alert danger mb-4">
-          <AlertCircle size={20} />
-          <div>
-            <div className="alert-title">Error</div>
-            <div className="alert-message">{error}</div>
-          </div>
-        </div>
-      )}
-
-      {success && (
-        <div className="alert success mb-4">
-          <CheckCircle size={20} />
-          <div>
-            <div className="alert-title">Success</div>
-            <div className="alert-message">{success}</div>
-          </div>
-        </div>
-      )}
-
       <div
         style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}
       >

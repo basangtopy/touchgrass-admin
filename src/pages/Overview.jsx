@@ -13,6 +13,8 @@ import StatusBadge from "../components/ui/StatusBadge";
 import VerifierHealthCard from "../components/ui/VerifierHealthCard";
 import { useMultiWalletBalances } from "../hooks/useWalletBalances";
 import { formatAddress } from "../utils/helpers";
+import { useToast } from "../contexts/ToastContext";
+import { parseContractError } from "../utils/errorParser";
 import {
   DollarSign,
   Users,
@@ -26,8 +28,8 @@ import {
 
 export default function Overview() {
   const signer = useEthersSigner();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [stats, setStats] = useState({
     challengeCount: 0,
     isPaused: false,
@@ -173,7 +175,7 @@ export default function Overview() {
         });
       } catch (error) {
         console.error("Error fetching stats:", error);
-        setError("Failed to fetch contract data. Check console for details.");
+        showToast({ type: "error", ...parseContractError(error) });
       } finally {
         setLoading(false);
       }
@@ -207,17 +209,6 @@ export default function Overview() {
 
   return (
     <div>
-      {/* Error Alert */}
-      {error && (
-        <div className="alert danger mb-4">
-          <AlertTriangle size={20} />
-          <div>
-            <div className="alert-title">Error</div>
-            <div className="alert-message">{error}</div>
-          </div>
-        </div>
-      )}
-
       {/* Alerts */}
       {stats.isPaused && (
         <div className="alert danger mb-4">

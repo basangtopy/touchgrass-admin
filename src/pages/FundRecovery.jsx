@@ -9,20 +9,21 @@ import {
 } from "../data/contractConfig";
 import Card from "../components/ui/Card";
 import StatusBadge from "../components/ui/StatusBadge";
+import { useToast } from "../contexts/ToastContext";
+import { parseContractError } from "../utils/errorParser";
 import {
   RefreshCw,
   AlertCircle,
-  CheckCircle,
   Download,
   AlertTriangle,
+  CheckCircle,
 } from "lucide-react";
 
 export default function FundRecovery() {
   const signer = useEthersSigner();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   const [recovery, setRecovery] = useState({
     tokens: [],
@@ -110,7 +111,7 @@ export default function FundRecovery() {
       }
     } catch (error) {
       console.error("Error fetching recovery status:", error);
-      setError("Failed to fetch recovery status");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setLoading(false);
     }
@@ -122,13 +123,15 @@ export default function FundRecovery() {
 
   const handleRecoverToken = async (symbol) => {
     if (!recipientAddress) {
-      setError("Please enter a recipient address");
+      showToast({
+        type: "error",
+        title: "Error",
+        message: "Please enter a recipient address",
+      });
       return;
     }
 
     setProcessing(true);
-    setError("");
-    setSuccess("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -140,14 +143,22 @@ export default function FundRecovery() {
         tx = await contract.recoverERC20BySymbol(symbol, recipientAddress);
       }
 
-      setSuccess(`Recovering ${symbol}... waiting for confirmation`);
+      showToast({
+        type: "info",
+        title: "Processing",
+        message: `Recovering ${symbol}... waiting for confirmation`,
+      });
       await tx.wait();
 
-      setSuccess(`Successfully recovered ${symbol}!`);
+      showToast({
+        type: "success",
+        title: "Success",
+        message: `Successfully recovered ${symbol}!`,
+      });
       fetchRecoveryStatus();
     } catch (error) {
       console.error("Recovery error:", error);
-      setError(error.reason || "Failed to recover funds");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -155,13 +166,15 @@ export default function FundRecovery() {
 
   const handleBatchRecover = async () => {
     if (!recipientAddress) {
-      setError("Please enter a recipient address");
+      showToast({
+        type: "error",
+        title: "Error",
+        message: "Please enter a recipient address",
+      });
       return;
     }
 
     setProcessing(true);
-    setError("");
-    setSuccess("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -171,7 +184,12 @@ export default function FundRecovery() {
         .map((t) => t.symbol);
 
       if (tokensToRecover.length === 0) {
-        setError("No tokens to recover");
+        showToast({
+          type: "error",
+          title: "Error",
+          message: "No tokens to recover",
+        });
+        setProcessing(false);
         return;
       }
 
@@ -179,14 +197,22 @@ export default function FundRecovery() {
         tokensToRecover,
         recipientAddress
       );
-      setSuccess("Batch recovering... waiting for confirmation");
+      showToast({
+        type: "info",
+        title: "Processing",
+        message: "Batch recovering... waiting for confirmation",
+      });
       await tx.wait();
 
-      setSuccess(`Successfully recovered ${tokensToRecover.length} token(s)!`);
+      showToast({
+        type: "success",
+        title: "Success",
+        message: `Successfully recovered ${tokensToRecover.length} token(s)!`,
+      });
       fetchRecoveryStatus();
     } catch (error) {
       console.error("Batch recovery error:", error);
-      setError(error.reason || "Batch recovery failed");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -198,14 +224,27 @@ export default function FundRecovery() {
       const result = await contract.verifyFundAccounting(symbol);
 
       if (result.isBalanced) {
-        setSuccess(`${symbol} accounting verified ✓`);
+        showToast({
+          type: "success",
+          title: "Verified",
+          message: `${symbol} accounting verified ✓`,
+        });
       } else {
-        setError(
-          `${symbol} has discrepancy: ${formatUnits(result.discrepancy, 18)}`
-        );
+        showToast({
+          type: "warning",
+          title: "Discrepancy",
+          message: `${symbol} has discrepancy: ${formatUnits(
+            result.discrepancy,
+            18
+          )}`,
+        });
       }
-    } catch (error) {
-      setError(`Failed to verify ${symbol} accounting`);
+    } catch (_error) {
+      showToast({
+        type: "error",
+        title: "Error",
+        message: `Failed to verify ${symbol} accounting`,
+      });
     }
   };
 
@@ -226,26 +265,6 @@ export default function FundRecovery() {
 
   return (
     <div>
-      {error && (
-        <div className="alert danger mb-4">
-          <AlertCircle size={20} />
-          <div>
-            <div className="alert-title">Error</div>
-            <div className="alert-message">{error}</div>
-          </div>
-        </div>
-      )}
-
-      {success && (
-        <div className="alert success mb-4">
-          <CheckCircle size={20} />
-          <div>
-            <div className="alert-title">Success</div>
-            <div className="alert-message">{success}</div>
-          </div>
-        </div>
-      )}
-
       {recovery.hasRecoverable && (
         <div className="alert warning mb-4">
           <AlertTriangle size={20} />

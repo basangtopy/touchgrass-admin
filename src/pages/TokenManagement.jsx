@@ -6,6 +6,8 @@ import Card from "../components/ui/Card";
 import Modal from "../components/ui/Modal";
 import Button from "../components/ui/Button";
 import ConfirmModal from "../components/ui/ConfirmModal";
+import { useToast } from "../contexts/ToastContext";
+import { parseContractError } from "../utils/errorParser";
 import {
   Plus,
   RefreshCw,
@@ -19,6 +21,7 @@ import {
 
 export default function TokenManagement() {
   const signer = useEthersSigner();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [tokens, setTokens] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -26,8 +29,6 @@ export default function TokenManagement() {
   const [showFallbackModal, setShowFallbackModal] = useState(false);
   const [selectedToken, setSelectedToken] = useState(null);
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   // Add token form state
   const [newToken, setNewToken] = useState({
@@ -143,7 +144,7 @@ export default function TokenManagement() {
       setTokens(tokenData);
     } catch (error) {
       console.error("Error fetching tokens:", error);
-      setError("Failed to fetch token data");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setLoading(false);
     }
@@ -156,8 +157,6 @@ export default function TokenManagement() {
   const handleAddToken = async (e) => {
     e.preventDefault();
     setProcessing(true);
-    setError("");
-    setSuccess("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -170,10 +169,18 @@ export default function TokenManagement() {
         parseInt(newToken.staleness)
       );
 
-      setSuccess(`Adding ${newToken.symbol}... waiting for confirmation`);
+      showToast({
+        type: "info",
+        title: "Processing",
+        message: `Adding ${newToken.symbol}... waiting for confirmation`,
+      });
       await tx.wait();
 
-      setSuccess(`Successfully added ${newToken.symbol}!`);
+      showToast({
+        type: "success",
+        title: "Success",
+        message: `Successfully added ${newToken.symbol}!`,
+      });
       setShowAddModal(false);
       setNewToken({
         symbol: "",
@@ -185,7 +192,7 @@ export default function TokenManagement() {
       fetchTokens();
     } catch (error) {
       console.error("Add token error:", error);
-      setError(error.reason || error.message || "Failed to add token");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -200,19 +207,20 @@ export default function TokenManagement() {
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, isOpen: false });
         setProcessing(true);
-        setError("");
 
         try {
           const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
           const tx = await contract.removeToken(symbol);
           await tx.wait();
-          setSuccess(`Successfully removed ${symbol}`);
+          showToast({
+            type: "success",
+            title: "Success",
+            message: `Successfully removed ${symbol}`,
+          });
           fetchTokens();
         } catch (error) {
           console.error("Remove token error:", error);
-          setError(
-            error.reason || "Failed to remove token. It may have locked funds."
-          );
+          showToast({ type: "error", ...parseContractError(error) });
         } finally {
           setProcessing(false);
         }
@@ -225,7 +233,6 @@ export default function TokenManagement() {
     if (!selectedToken || !newPriceFeed) return;
 
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -234,14 +241,18 @@ export default function TokenManagement() {
         newPriceFeed
       );
       await tx.wait();
-      setSuccess(`Price feed updated for ${selectedToken.symbol}`);
+      showToast({
+        type: "success",
+        title: "Success",
+        message: `Price feed updated for ${selectedToken.symbol}`,
+      });
       setShowEditModal(false);
       setNewPriceFeed("");
       setSelectedToken(null);
       fetchTokens();
     } catch (error) {
       console.error("Update price feed error:", error);
-      setError(error.reason || "Failed to update price feed");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -252,7 +263,6 @@ export default function TokenManagement() {
     if (!selectedToken || !fallbackPrice) return;
 
     setProcessing(true);
-    setError("");
 
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -262,14 +272,18 @@ export default function TokenManagement() {
         priceWei
       );
       await tx.wait();
-      setSuccess(`Fallback price enabled for ${selectedToken.symbol}`);
+      showToast({
+        type: "success",
+        title: "Success",
+        message: `Fallback price enabled for ${selectedToken.symbol}`,
+      });
       setShowFallbackModal(false);
       setFallbackPrice("");
       setSelectedToken(null);
       fetchTokens();
     } catch (error) {
       console.error("Enable fallback error:", error);
-      setError(error.reason || "Failed to enable fallback price");
+      showToast({ type: "error", ...parseContractError(error) });
     } finally {
       setProcessing(false);
     }
@@ -284,17 +298,20 @@ export default function TokenManagement() {
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, isOpen: false });
         setProcessing(true);
-        setError("");
 
         try {
           const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
           const tx = await contract.disableFallbackPrice(symbol);
           await tx.wait();
-          setSuccess(`Fallback price disabled for ${symbol}`);
+          showToast({
+            type: "success",
+            title: "Success",
+            message: `Fallback price disabled for ${symbol}`,
+          });
           fetchTokens();
         } catch (error) {
           console.error("Disable fallback error:", error);
-          setError(error.reason || "Failed to disable fallback price");
+          showToast({ type: "error", ...parseContractError(error) });
         } finally {
           setProcessing(false);
         }
@@ -327,26 +344,6 @@ export default function TokenManagement() {
 
   return (
     <div>
-      {error && (
-        <div className="alert danger mb-4">
-          <AlertCircle size={20} />
-          <div>
-            <div className="alert-title">Error</div>
-            <div className="alert-message">{error}</div>
-          </div>
-        </div>
-      )}
-
-      {success && (
-        <div className="alert success mb-4">
-          <RefreshCw size={20} />
-          <div>
-            <div className="alert-title">Success</div>
-            <div className="alert-message">{success}</div>
-          </div>
-        </div>
-      )}
-
       <Card
         title="Supported Tokens"
         actions={
