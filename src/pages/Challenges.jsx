@@ -192,7 +192,7 @@ export default function Challenges() {
   const fetchRecoveryInfo = async (challengeId) => {
     try {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-      const info = await contract.getChallengeRecoveryInfo(challengeId);
+      const info = await contract.getChallengeLockedInfo(challengeId);
 
       setRecoveryInfo({
         staker: info.staker,
@@ -224,10 +224,10 @@ export default function Challenges() {
 
     const expiration = getExpirationTime(
       challenge.startTime,
-      challenge.duration
+      challenge.duration,
     );
     const gracePeriodEnd = new Date(
-      expiration.getTime() + challenge.gracePeriodSnapshot * 1000
+      expiration.getTime() + challenge.gracePeriodSnapshot * 1000,
     );
     const now = Date.now();
 
@@ -404,7 +404,7 @@ export default function Challenges() {
                 <div>
                   {getExpirationTime(
                     challenge.startTime,
-                    challenge.duration
+                    challenge.duration,
                   ).toLocaleString()}
                 </div>
               </div>
@@ -431,7 +431,7 @@ export default function Challenges() {
                         Date.now() >
                         getExpirationTime(
                           challenge.startTime,
-                          challenge.duration
+                          challenge.duration,
                         ).getTime()
                           ? "warning"
                           : "active"
@@ -440,7 +440,7 @@ export default function Challenges() {
                         Date.now() >
                         getExpirationTime(
                           challenge.startTime,
-                          challenge.duration
+                          challenge.duration,
                         ).getTime()
                           ? "Expired"
                           : "Active"
